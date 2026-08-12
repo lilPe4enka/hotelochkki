@@ -21,8 +21,11 @@ WEB_APP_URL = "https://ваша-ссылка.netlify.app"
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+# Обработчик команды /start
 @dp.message(CommandStart())
 async def start_cmd(message: Message):
+    print(f"👉 Пользователь {message.from_user.first_name} нажал /start")
+    
     builder = InlineKeyboardBuilder()
     builder.button(
         text="Мой Wishlist 🎁",
@@ -43,52 +46,63 @@ async def start_cmd(message: Message):
         parse_mode="Markdown"
     )
 
-# Обработка любых текстовых сообщений
-@dp.message(F.text)
+# Обработка ЛЮБЫХ текстов и ссылок
+@dp.message()
 async def handle_text(message: Message):
-    text = message.text
+    # Если это была команда /start, пропускаем её (она уже обработана выше)
+    if message.text and message.text.startswith('/start'):
+        return
+
+    print(f"\n📩 Получено сообщение от {message.from_user.first_name}: {message.text}")
+    text = message.text or ""
     
-    # Ищем все ссылки в тексте сообщения с помощью регулярных выражений
+    # Регулярное выражение для поиска ссылок в тексте
     urls = re.findall(r'(https?://\S+)', text)
     
     if not urls:
-        await message.answer("Я не нашел ссылку в твоем сообщении. Пожалуйста, отправь мне ссылку на товар 🔗")
+        print("❌ Ссылок в сообщении не найдено.")
+        await message.answer("Я не нашел ссылку в твоем сообщении. Отправь мне ссылку на товар 🔗")
         return
         
     url_to_save = urls[0] # Берем первую найденную ссылку
+    print(f"🔗 Найдена ссылка: {url_to_save}")
     
-    # Отправляем временное сообщение, пока сервер обрабатывает ссылку
     msg = await message.answer("⏳ Анализирую ссылку и сохраняю товар...")
     
-    # Отправляем запрос на наш бэкенд на Render
+    # Отправляем запрос на наш сервер Render
     async with aiohttp.ClientSession() as session:
         try:
             payload = {
                 "user_id": message.from_user.id,
                 "url": url_to_save
             }
-            # Делаем POST запрос к нашему API
+            
+            print(f"📡 Отправляем POST запрос на {API_URL}/api/wishlist ...")
             async with session.post(f"{API_URL}/api/wishlist", json=payload) as resp:
+                print(f"Статус ответа от Render: {resp.status}")
+                
                 if resp.status == 200:
                     data = await resp.json()
-                    title = data.get("title", "Неизвестный товар")
+                    title = data.get("title", "Товар")
                     
-                    success_text = (
-                        f"✅ **Успешно сохранено!**\n\n"
-                        f"📦 {title}\n\n"
-                        f"Товар уже ждет тебя в твоем Wishlist."
-                    )
-                    await msg.edit_text(success_text, parse_mode="Markdown")
+                    # Очищаем название от спецсимволов, чтобы не сломать Markdown-разметку Telegram
+                    safe_title = title.replace('*', '').replace('_', '').replace('`', '')
+                    
+                    await msg.edit_text(f"✅ **Успешно сохранено!**\n\n📦 {safe_title}", parse_mode="Markdown")
+                    print("✅ Товар успешно сохранен!")
                 else:
-                    await msg.edit_text("❌ Ошибка при сохранении товара. Сервер ответил ошибкой.")
+                    error_text = await resp.text()
+                    print(f"❌ Ошибка от Render: {error_text}")
+                    await msg.edit_text("❌ Ошибка при сохранении товара на сервере.")
                     
         except Exception as e:
-            print(f"Ошибка связи с API: {e}")
-            await msg.edit_text("❌ Не удалось связаться с сервером. Проверьте работает ли Render.")
+            print(f"❌ Критическая ошибка соединения с Render: {e}")
+            await msg.edit_text("❌ Не удалось связаться с сервером API. Проверьте, работает ли ваш бэкенд на Render.")
 
 async def main():
     print("Бот Wishlist запущен и готов к работе!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    asyncio.run(main())
     asyncio.run(main())
