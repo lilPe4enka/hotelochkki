@@ -16,7 +16,7 @@ API_URL = "https://hotelochkki.onrender.com"
 # 3. Ссылка на будущий фронтенд (Mini App)
 # Пока фронтенда нет, можете вставить любую заглушку, например "https://google.com". 
 # На следующем шаге мы заменим ее на реальную ссылку с Netlify/GitHub Pages.
-WEB_APP_URL = "https://lilpe4enka.github.io/hotelochkki/=?v1.1"
+WEB_APP_URL = "https://lilpe4enka.github.io/hotelochkki/=?v1.2"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
