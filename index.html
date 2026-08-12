@@ -10,7 +10,7 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background-color: var(--tg-theme-bg-color, #f4f4f5);
             color: var(--tg-theme-text-color, #000000);
-            margin: 0; padding: 16px;
+            margin: 0; padding: 16px; padding-bottom: 80px; /* Отступ для плавающей кнопки */
         }
 
         h2 { text-align: center; margin-top: 0; margin-bottom: 20px;}
@@ -63,10 +63,10 @@
             font-size: 13px; font-weight: bold;
         }
 
-        /* Блок с кнопками поверх картинки */
+        /* Кнопки действий (редактировать, удалить) */
         .card-actions {
             position: absolute; top: 8px; right: 8px;
-            display: flex; gap: 6px;
+            display: flex; gap: 6px; z-index: 10;
         }
 
         .action-btn {
@@ -76,8 +76,37 @@
             font-size: 14px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
 
+        /* Чекбокс для выбора товара */
+        .checkbox-container {
+            position: absolute; top: 12px; left: 12px; z-index: 10;
+        }
+        
+        .item-checkbox {
+            width: 22px; height: 22px; cursor: pointer;
+            accent-color: var(--tg-theme-button-color, #3390ec);
+        }
+
+        /* Плавающая кнопка "Поделиться" */
+        .share-bar {
+            position: fixed; bottom: 16px; left: 16px; right: 16px;
+            display: flex; justify-content: center; z-index: 100;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+        
+        .share-bar.hidden {
+            transform: translateY(100px); opacity: 0; pointer-events: none;
+        }
+
+        .share-btn {
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #fff);
+            padding: 16px; border-radius: 14px; border: none;
+            font-weight: bold; font-size: 16px; width: 100%;
+            box-shadow: 0 4px 15px rgba(51, 144, 236, 0.4); cursor: pointer;
+        }
+
         #loading { text-align: center; margin-top: 50px; font-weight: bold; color: var(--tg-theme-hint-color); }
-        .hidden { display: none !important; }
+        .hidden-element { display: none !important; }
     </style>
 </head>
 <body>
@@ -90,13 +119,18 @@
     </div>
 
     <div id="loading">Загружаем ваши хотелки... ⏳</div>
-    <div id="wishlist-grid" class="grid hidden"></div>
+    <div id="wishlist-grid" class="grid hidden-element"></div>
+
+    <!-- Всплывающая панель "Поделиться" -->
+    <div id="share-bar" class="share-bar hidden">
+        <button class="share-btn" onclick="shareSelected()">Поделиться выбранным (0)</button>
+    </div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready(); tg.expand(); tg.setHeaderColor('bg_color');
 
-        // ВАЖНО: Ваша ссылка на Render
+        // ВАЖНО: Вставьте вашу ссылку на Render
         const API_URL = "https://hotelochkki.onrender.com"; 
         const userId = tg.initDataUnsafe?.user?.id || 123456789;
 
@@ -105,6 +139,7 @@
                 const response = await fetch(`${API_URL}/api/wishlist/${userId}`);
                 const items = await response.json();
                 renderItems(items);
+                updateShareButton(); // Сбрасываем кнопку при обновлении
             } catch (error) {
                 document.getElementById('loading').innerText = "Ошибка загрузки 😔";
             }
@@ -117,27 +152,29 @@
             grid.innerHTML = '';
             
             if (items.length === 0) {
-                loading.innerText = "Ваш список пока пуст 🛍\nВставьте ссылку товара выше.";
-                loading.classList.remove('hidden');
-                grid.classList.add('hidden');
+                loading.innerText = "Ваш список пока пуст 🛍\nОтправьте ссылку боту или добавьте её выше.";
+                loading.classList.remove('hidden-element');
+                grid.classList.add('hidden-element');
                 return;
             }
 
-            loading.classList.add('hidden');
-            grid.classList.remove('hidden');
+            loading.classList.add('hidden-element');
+            grid.classList.remove('hidden-element');
 
             items.forEach(item => {
                 const card = document.createElement('div');
                 card.className = 'card';
-                // Экранируем кавычки в названии, чтобы не сломать JS
                 const safeTitle = item.title.replace(/'/g, "&apos;").replace(/"/g, "&quot;");
                 
                 card.innerHTML = `
+                    <div class="checkbox-container">
+                        <input type="checkbox" class="item-checkbox" data-url="${item.url}" onchange="updateShareButton()">
+                    </div>
                     <div class="card-actions">
                         <button class="action-btn" onclick="editItem(${item.id}, '${safeTitle}')">✏️</button>
                         <button class="action-btn" style="color: red;" onclick="deleteItem(${item.id})">🗑</button>
                     </div>
-                    <img src="${item.image_url}" alt="Фото товара" class="card-img" onerror="this.src='https://via.placeholder.com/300x300?text=Нет+фото'">
+                    <img src="${item.image_url}" alt="Фото" class="card-img" onerror="this.src='https://via.placeholder.com/300x300?text=Нет+фото'">
                     <div class="card-body">
                         <div class="card-title">${item.title}</div>
                         <a href="${item.url}" target="_blank" class="buy-btn">Перейти</a>
@@ -147,66 +184,73 @@
             });
         }
 
+        // Обновление состояния кнопки "Поделиться"
+        function updateShareButton() {
+            const checkboxes = document.querySelectorAll('.item-checkbox:checked');
+            const shareBar = document.getElementById('share-bar');
+            const shareBtn = shareBar.querySelector('.share-btn');
+
+            if (checkboxes.length > 0) {
+                shareBtn.innerText = `Поделиться выбранным (${checkboxes.length})`;
+                shareBar.classList.remove('hidden');
+            } else {
+                shareBar.classList.add('hidden');
+            }
+        }
+
+        // Функция отправки ссылок в Telegram
+        function shareSelected() {
+            const checkboxes = document.querySelectorAll('.item-checkbox:checked');
+            if (checkboxes.length === 0) return;
+
+            // Формируем текст сообщения только со ссылками
+            let text = "Привет! Посмотри, что я хочу 🎁:\n\n";
+            checkboxes.forEach((cb, index) => {
+                text += `${index + 1}. ${cb.dataset.url}\n`;
+            });
+
+            // Открываем окно выбора чата в Telegram
+            const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(text)}`;
+            tg.openTelegramLink(shareUrl);
+        }
+
         async function editItem(itemId, currentTitle) {
             const newTitle = prompt("Введите новое название товара:", currentTitle);
-            
-            // Если пользователь нажал "Отмена" или оставил старое название
-            if (newTitle === null || newTitle.trim() === "" || newTitle === currentTitle) {
-                return;
-            }
+            if (newTitle === null || newTitle.trim() === "" || newTitle === currentTitle) return;
 
-            tg.MainButton.text = "Обновляем...";
-            tg.MainButton.show();
-
+            tg.MainButton.text = "Обновляем..."; tg.MainButton.show();
             try {
                 const response = await fetch(`${API_URL}/api/wishlist/${itemId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ title: newTitle.trim() })
                 });
-
                 if (response.ok) {
                     tg.HapticFeedback.notificationOccurred('success');
                     fetchWishlist();
-                } else {
-                    tg.showAlert("Ошибка при обновлении");
                 }
-            } catch (error) {
-                tg.showAlert("Ошибка сети");
-            } finally {
-                tg.MainButton.hide();
-            }
+            } catch (error) {} finally { tg.MainButton.hide(); }
         }
 
         async function addNewItem() {
             const input = document.getElementById('link-input');
             const url = input.value.trim();
-            
             if (!url) return tg.showAlert("Сначала вставьте ссылку!");
             if (!url.startsWith('http')) return tg.showAlert("Ссылка должна начинаться с http или https");
 
-            tg.MainButton.text = "Сохраняем...";
-            tg.MainButton.showProgress(); tg.MainButton.show();
-
+            tg.MainButton.text = "Сохраняем..."; tg.MainButton.showProgress(); tg.MainButton.show();
             try {
                 const response = await fetch(`${API_URL}/api/wishlist`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ user_id: userId, url: url })
                 });
-
                 if (response.ok) {
                     input.value = '';
                     tg.HapticFeedback.notificationOccurred('success');
                     fetchWishlist();
-                } else {
-                    tg.showAlert("Ошибка при сохранении");
-                }
-            } catch (error) {
-                tg.showAlert("Ошибка сети");
-            } finally {
-                tg.MainButton.hide();
-            }
+                } else { tg.showAlert("Ошибка при сохранении"); }
+            } catch (error) {} finally { tg.MainButton.hide(); }
         }
 
         async function deleteItem(itemId) {
