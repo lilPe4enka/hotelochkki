@@ -7,11 +7,11 @@ from aiogram.types import Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # 1. Вставьте токен вашего бота
-BOT_TOKEN = "ВАШ_ТОКЕН_БОТА"
+BOT_TOKEN = "8962380300:AAHjm3VlqgUT--ATCQcU6p0wPAreGOMsXNM"
 
 # 2. Вставьте ссылку на ваш API на Render (БЕЗ слэша на конце!)
 # Пример: "https://wishlist-api-a3wl.onrender.com"
-API_URL = "ВАША_ССЫЛКА_RENDER"
+API_URL = "https://hotelochkki.onrender.com"
 
 # 3. Ссылка на будущий фронтенд (Mini App)
 # Пока фронтенда нет, можете вставить любую заглушку, например "https://google.com". 
