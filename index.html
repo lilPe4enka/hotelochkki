@@ -11,15 +11,12 @@
             background-color: var(--tg-theme-bg-color, #f4f4f5);
             color: var(--tg-theme-text-color, #000000);
             margin: 0; padding: 16px;
-            transition: background-color 0.3s, color 0.3s;
         }
 
         h2 { text-align: center; margin-top: 0; margin-bottom: 20px;}
 
-        /* Форма добавления товара */
-        .add-form {
-            display: flex; gap: 8px; margin-bottom: 24px;
-        }
+        .add-form { display: flex; gap: 8px; margin-bottom: 24px; }
+        
         .add-input {
             flex: 1; padding: 12px; border-radius: 12px;
             border: 1px solid var(--tg-theme-hint-color, #ccc);
@@ -27,6 +24,7 @@
             color: var(--tg-theme-text-color, #000);
             outline: none;
         }
+        
         .add-btn {
             background-color: var(--tg-theme-button-color, #3390ec);
             color: var(--tg-theme-button-text-color, #fff);
@@ -34,24 +32,19 @@
             font-weight: bold; cursor: pointer;
         }
 
-        /* Сетка товаров */
         .grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr); /* 2 колонки на телефоне */
-            gap: 12px;
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
         }
 
         .card {
             background-color: var(--tg-theme-secondary-bg-color, #ffffff);
             border-radius: 16px; overflow: hidden;
             box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-            display: flex; flex-direction: column;
-            position: relative;
+            display: flex; flex-direction: column; position: relative;
         }
 
         .card-img {
-            width: 100%; height: 160px; object-fit: cover;
-            background-color: #eee;
+            width: 100%; height: 160px; object-fit: cover; background-color: #eee;
         }
 
         .card-body { padding: 12px; display: flex; flex-direction: column; flex: 1; }
@@ -70,13 +63,17 @@
             font-size: 13px; font-weight: bold;
         }
 
-        .delete-btn {
+        /* Блок с кнопками поверх картинки */
+        .card-actions {
             position: absolute; top: 8px; right: 8px;
+            display: flex; gap: 6px;
+        }
+
+        .action-btn {
             background: rgba(255, 255, 255, 0.9); border: none;
             width: 30px; height: 30px; border-radius: 15px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 16px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            color: red;
+            font-size: 14px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
 
         #loading { text-align: center; margin-top: 50px; font-weight: bold; color: var(--tg-theme-hint-color); }
@@ -87,42 +84,32 @@
 
     <h2>Мои Желания 🎁</h2>
 
-    <!-- Форма для ручного добавления ссылок -->
     <div class="add-form">
         <input type="text" id="link-input" class="add-input" placeholder="Вставьте ссылку на товар...">
         <button class="add-btn" onclick="addNewItem()">➕</button>
     </div>
 
     <div id="loading">Загружаем ваши хотелки... ⏳</div>
-    
-    <!-- Контейнер для карточек -->
     <div id="wishlist-grid" class="grid hidden"></div>
 
     <script>
         const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-        tg.setHeaderColor('bg_color');
+        tg.ready(); tg.expand(); tg.setHeaderColor('bg_color');
 
-        // ВАЖНО: Вставьте сюда вашу ссылку на Render (без слэша на конце)
+        // ВАЖНО: Ваша ссылка на Render
         const API_URL = "https://hotelochkki.onrender.com"; 
-
-        // Получаем ID пользователя из Telegram (или ставим заглушку для теста в браузере)
         const userId = tg.initDataUnsafe?.user?.id || 123456789;
 
-        // Загрузка товаров при открытии приложения
         async function fetchWishlist() {
             try {
                 const response = await fetch(`${API_URL}/api/wishlist/${userId}`);
                 const items = await response.json();
                 renderItems(items);
             } catch (error) {
-                console.error("Ошибка загрузки:", error);
                 document.getElementById('loading').innerText = "Ошибка загрузки 😔";
             }
         }
 
-        // Отрисовка товаров на экране
         function renderItems(items) {
             const grid = document.getElementById('wishlist-grid');
             const loading = document.getElementById('loading');
@@ -142,19 +129,55 @@
             items.forEach(item => {
                 const card = document.createElement('div');
                 card.className = 'card';
+                // Экранируем кавычки в названии, чтобы не сломать JS
+                const safeTitle = item.title.replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+                
                 card.innerHTML = `
-                    <button class="delete-btn" onclick="deleteItem(${item.id})">🗑</button>
+                    <div class="card-actions">
+                        <button class="action-btn" onclick="editItem(${item.id}, '${safeTitle}')">✏️</button>
+                        <button class="action-btn" style="color: red;" onclick="deleteItem(${item.id})">🗑</button>
+                    </div>
                     <img src="${item.image_url}" alt="Фото товара" class="card-img" onerror="this.src='https://via.placeholder.com/300x300?text=Нет+фото'">
                     <div class="card-body">
                         <div class="card-title">${item.title}</div>
-                        <a href="${item.url}" target="_blank" class="buy-btn">Перейти к товару</a>
+                        <a href="${item.url}" target="_blank" class="buy-btn">Перейти</a>
                     </div>
                 `;
                 grid.appendChild(card);
             });
         }
 
-        // Добавление нового товара прямо из приложения
+        async function editItem(itemId, currentTitle) {
+            const newTitle = prompt("Введите новое название товара:", currentTitle);
+            
+            // Если пользователь нажал "Отмена" или оставил старое название
+            if (newTitle === null || newTitle.trim() === "" || newTitle === currentTitle) {
+                return;
+            }
+
+            tg.MainButton.text = "Обновляем...";
+            tg.MainButton.show();
+
+            try {
+                const response = await fetch(`${API_URL}/api/wishlist/${itemId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: newTitle.trim() })
+                });
+
+                if (response.ok) {
+                    tg.HapticFeedback.notificationOccurred('success');
+                    fetchWishlist();
+                } else {
+                    tg.showAlert("Ошибка при обновлении");
+                }
+            } catch (error) {
+                tg.showAlert("Ошибка сети");
+            } finally {
+                tg.MainButton.hide();
+            }
+        }
+
         async function addNewItem() {
             const input = document.getElementById('link-input');
             const url = input.value.trim();
@@ -163,8 +186,7 @@
             if (!url.startsWith('http')) return tg.showAlert("Ссылка должна начинаться с http или https");
 
             tg.MainButton.text = "Сохраняем...";
-            tg.MainButton.showProgress();
-            tg.MainButton.show();
+            tg.MainButton.showProgress(); tg.MainButton.show();
 
             try {
                 const response = await fetch(`${API_URL}/api/wishlist`, {
@@ -176,7 +198,7 @@
                 if (response.ok) {
                     input.value = '';
                     tg.HapticFeedback.notificationOccurred('success');
-                    fetchWishlist(); // Перезагружаем список
+                    fetchWishlist();
                 } else {
                     tg.showAlert("Ошибка при сохранении");
                 }
@@ -187,25 +209,20 @@
             }
         }
 
-        // Удаление товара
         async function deleteItem(itemId) {
-            // Спрашиваем подтверждение
             tg.showConfirm("Точно удалить этот товар?", async (confirmed) => {
                 if (confirmed) {
                     try {
                         const response = await fetch(`${API_URL}/api/wishlist/${itemId}`, { method: 'DELETE' });
                         if (response.ok) {
                             tg.HapticFeedback.impactOccurred('light');
-                            fetchWishlist(); // Обновляем список
+                            fetchWishlist();
                         }
-                    } catch (error) {
-                        tg.showAlert("Ошибка при удалении");
-                    }
+                    } catch (error) {}
                 }
             });
         }
 
-        // Запускаем загрузку данных при старте
         fetchWishlist();
     </script>
 </body>
