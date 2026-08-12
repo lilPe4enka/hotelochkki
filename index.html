@@ -130,7 +130,7 @@
         const tg = window.Telegram.WebApp;
         tg.ready(); tg.expand(); tg.setHeaderColor('bg_color');
 
-        // ВАЖНО: Вставьте вашу ссылку на Render
+        // Ваша ссылка на Render
         const API_URL = "https://hotelochkki.onrender.com"; 
         const userId = tg.initDataUnsafe?.user?.id || 123456789;
 
@@ -198,7 +198,7 @@
             }
         }
 
-        // Функция отправки ссылок в Telegram
+        // ЖЕЛЕЗОБЕТОННАЯ ФУНКЦИЯ ОТПРАВКИ
         function shareSelected() {
             const checkboxes = document.querySelectorAll('.item-checkbox:checked');
             if (checkboxes.length === 0) return;
@@ -209,9 +209,16 @@
                 text += `${index + 1}. ${cb.dataset.url}\n`;
             });
 
-            // Открываем окно выбора чата в Telegram
-            const shareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(text)}`;
-            tg.openTelegramLink(shareUrl);
+            // Формируем ссылку для шаринга
+            const shareUrl = `https://t.me/share/url?text=${encodeURIComponent(text)}`;
+
+            try {
+                // Открываем окно выбора чата в Telegram
+                tg.openTelegramLink(shareUrl);
+            } catch (e) {
+                // Если не сработало, используем классический переход браузера
+                window.location.href = shareUrl;
+            }
         }
 
         async function editItem(itemId, currentTitle) {
