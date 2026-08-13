@@ -2,7 +2,7 @@ import asyncio
 import re
 import aiohttp
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
