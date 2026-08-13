@@ -18,7 +18,7 @@ app.add_middleware(
 
 DB_FILE = "wishlist.db"
 
-# --- 1. НАСТРОЙКА БАЗЫ ДАННЫХ ---
+# --- 1. НАСТРОЙКА И ОБНОВЛЕНИЕ БАЗЫ ДАННЫХ ---
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -32,6 +32,15 @@ def init_db():
             price TEXT
         )
     ''')
+    
+    # Безопасное добавление новых колонок (если их еще нет)
+    try:
+        cursor.execute("ALTER TABLE items ADD COLUMN category TEXT DEFAULT 'Остальное'")
+        cursor.execute("ALTER TABLE items ADD COLUMN is_purchased INTEGER DEFAULT 0")
+        cursor.execute("ALTER TABLE items ADD COLUMN is_priority INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass # Если возникает ошибка, значит колонки уже существуют, идем дальше
+        
     conn.commit()
     conn.close()
 
@@ -43,7 +52,10 @@ class AddItemRequest(BaseModel):
     url: str
 
 class UpdateItemRequest(BaseModel):
-    title: str
+    title: Optional[str] = None
+    category: Optional[str] = None
+    is_purchased: Optional[int] = None
+    is_priority: Optional[int] = None
 
 class ItemResponse(BaseModel):
     id: int
@@ -52,6 +64,9 @@ class ItemResponse(BaseModel):
     title: Optional[str] = None
     image_url: Optional[str] = None
     price: Optional[str] = None
+    category: Optional[str] = "Остальное"
+    is_purchased: Optional[int] = 0
+    is_priority: Optional[int] = 0
 
 # --- 3. ПАРСЕР ---
 def parse_link(url: str):
@@ -88,13 +103,14 @@ def parse_link(url: str):
 # --- 4. РОУТЫ API ---
 @app.get("/")
 def read_root():
-    return {"status": "ok", "message": "Wishlist API is running!"}
+    return {"status": "ok", "message": "Wishlist API 2.0 is running!"}
 
 @app.get("/api/wishlist/{user_id}", response_model=List[ItemResponse])
 def get_wishlist(user_id: int):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT id, user_id, url, title, image_url, price FROM items WHERE user_id = ? ORDER BY id DESC", (user_id,))
+    # Запрашиваем новые поля
+    cursor.execute("SELECT id, user_id, url, title, image_url, price, category, is_purchased, is_priority FROM items WHERE user_id = ? ORDER BY id DESC", (user_id,))
     rows = cursor.fetchall()
     conn.close()
     
@@ -102,7 +118,8 @@ def get_wishlist(user_id: int):
     for row in rows:
         items.append({
             "id": row[0], "user_id": row[1], "url": row[2],
-            "title": row[3], "image_url": row[4], "price": row[5]
+            "title": row[3], "image_url": row[4], "price": row[5],
+            "category": row[6], "is_purchased": row[7], "is_priority": row[8]
         })
     return items
 
@@ -113,8 +130,8 @@ def add_item(request: AddItemRequest):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO items (user_id, url, title, image_url, price)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO items (user_id, url, title, image_url, price, category, is_purchased, is_priority)
+        VALUES (?, ?, ?, ?, ?, 'Остальное', 0, 0)
     ''', (request.user_id, request.url, parsed_data['title'], parsed_data['image_url'], parsed_data['price']))
     
     item_id = cursor.lastrowid
@@ -122,23 +139,43 @@ def add_item(request: AddItemRequest):
     conn.close()
     
     return {
-        "id": item_id,
-        "user_id": request.user_id,
-        "url": request.url,
-        "title": parsed_data['title'],
-        "image_url": parsed_data['image_url'],
-        "price": parsed_data['price']
+        "id": item_id, "user_id": request.user_id, "url": request.url,
+        "title": parsed_data['title'], "image_url": parsed_data['image_url'],
+        "price": parsed_data['price'], "category": "Остальное",
+        "is_purchased": 0, "is_priority": 0
     }
 
-# НОВЫЙ РОУТ: Обновление названия
+# ДИНАМИЧЕСКОЕ ОБНОВЛЕНИЕ (Название, категория, статус покупки, приоритет)
 @app.put("/api/wishlist/{item_id}")
 def update_item(item_id: int, request: UpdateItemRequest):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("UPDATE items SET title = ? WHERE id = ?", (request.title, item_id))
-    conn.commit()
+    
+    # Собираем только те поля, которые пришли в запросе
+    update_fields = []
+    params = []
+    
+    if request.title is not None:
+        update_fields.append("title = ?")
+        params.append(request.title)
+    if request.category is not None:
+        update_fields.append("category = ?")
+        params.append(request.category)
+    if request.is_purchased is not None:
+        update_fields.append("is_purchased = ?")
+        params.append(request.is_purchased)
+    if request.is_priority is not None:
+        update_fields.append("is_priority = ?")
+        params.append(request.is_priority)
+        
+    if update_fields:
+        params.append(item_id)
+        query = f"UPDATE items SET {', '.join(update_fields)} WHERE id = ?"
+        cursor.execute(query, params)
+        conn.commit()
+        
     conn.close()
-    return {"success": True, "new_title": request.title}
+    return {"success": True}
 
 @app.delete("/api/wishlist/{item_id}")
 def delete_item(item_id: int):
