@@ -26,7 +26,6 @@
             padding: 16px;
         }
 
-        /* Шапка и кнопка обновления */
         .header {
             display: flex;
             justify-content: space-between;
@@ -34,10 +33,7 @@
             margin-bottom: 20px;
         }
 
-        .header h2 {
-            margin: 0;
-            font-size: 22px;
-        }
+        .header h2 { margin: 0; font-size: 22px; }
 
         .update-btn {
             background-color: var(--button-color);
@@ -50,11 +46,8 @@
             cursor: pointer;
             transition: opacity 0.2s;
         }
-        .update-btn:disabled {
-            opacity: 0.5;
-        }
+        .update-btn:disabled { opacity: 0.5; }
 
-        /* Сетка товаров */
         .grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -70,9 +63,7 @@
             position: relative;
         }
 
-        .card.purchased {
-            opacity: 0.5;
-        }
+        .card.purchased { opacity: 0.5; }
 
         .card img {
             width: 100%;
@@ -125,35 +116,49 @@
             display: block;
         }
 
+        /* НОВЫЙ ДИЗАЙН КНОПОК УПРАВЛЕНИЯ */
         .controls {
             display: flex;
             gap: 6px;
         }
 
         .controls button {
-            flex: 1;
             padding: 6px;
             border: none;
             border-radius: 6px;
             font-size: 12px;
             font-weight: bold;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .btn-toggle {
             background-color: #34c759;
             color: white;
+            flex: 1; /* Растягивается на свободное место */
+        }
+
+        .btn-edit {
+            background-color: #ff9500;
+            color: white;
+            flex: 0 0 32px; /* Фиксированная ширина для иконки */
+            font-size: 14px;
         }
 
         .btn-delete {
             background-color: #ff3b30;
             color: white;
+            flex: 0 0 32px; /* Фиксированная ширина для иконки */
+            font-size: 14px;
         }
 
         .empty-state {
             text-align: center;
             color: var(--hint-color);
             margin-top: 50px;
+            grid-column: 1 / -1;
         }
     </style>
 </head>
@@ -176,42 +181,36 @@
         const RENDER_URL = "https://hotelochkki.onrender.com"; 
         
         const tg = window.Telegram.WebApp;
-        tg.expand(); // Открываем на весь экран
+        tg.expand(); 
 
-        // Определяем ID пользователя
         const urlParams = new URLSearchParams(window.location.search);
         const guestId = urlParams.get('guest_id');
-        // Если тестируем в браузере и tg.initDataUnsafe пустой, берем ID для теста
         const myId = tg.initDataUnsafe?.user?.id || 123456789; 
         
-        // Чью витрину показываем? Если есть guest_id, то его, иначе свою.
         const targetUserId = guestId ? guestId : myId;
-        
-        // Является ли текущий человек владельцем витрины?
         const isOwner = !guestId || (guestId == myId);
 
-        // Настройка интерфейса
+        let currentItems = []; // Сюда сохраняем загруженные товары для редактирования
+
         if (!isOwner) {
             document.getElementById('pageTitle').innerText = "Витрина желаний 🎁";
         } else {
             document.getElementById('updatePricesBtn').style.display = 'block';
         }
 
-        // Загрузка списка товаров
         async function loadWishlist() {
             try {
                 const response = await fetch(`${RENDER_URL}/api/wishlist/${targetUserId}`);
                 if (!response.ok) throw new Error("Ошибка сервера");
                 
-                const items = await response.json();
-                renderItems(items);
+                currentItems = await response.json();
+                renderItems(currentItems);
             } catch (error) {
                 console.error(error);
                 document.getElementById('wishlist').innerHTML = `<div class="empty-state">❌ Ошибка подключения. Сервер спит или недоступен.</div>`;
             }
         }
 
-        // Отрисовка товаров на экране
         function renderItems(items) {
             const container = document.getElementById('wishlist');
             container.innerHTML = '';
@@ -222,22 +221,24 @@
             }
 
             items.forEach(item => {
-                // Оформление цены
                 let priceHtml = '';
                 if (item.price === "Нет в наличии") {
                     priceHtml = `<div class="price out-of-stock">Нет в наличии</div>`;
-                } else if (item.price) {
+                } else if (item.price && item.price !== "Цена не найдена") {
                     priceHtml = `<div class="price">${item.price}</div>`;
+                } else if (item.price === "Цена не найдена") {
+                    priceHtml = `<div class="price" style="font-size: 13px; color: #999;">Цена не найдена</div>`;
                 }
 
-                // Кнопки управления (видны только владельцу)
+                // ДОБАВЛЕНА КНОПКА РЕДАКТИРОВАНИЯ (✏️)
                 let controlsHtml = '';
                 if (isOwner) {
                     controlsHtml = `
                         <div class="controls">
                             <button class="btn-toggle" onclick="togglePurchased(${item.id}, ${item.is_purchased})">
-                                ${item.is_purchased ? '🔙 Вернуть' : '🎁 Подарили'}
+                                ${item.is_purchased ? '🔙' : '🎁'}
                             </button>
+                            <button class="btn-edit" onclick="editTitle(${item.id})">✏️</button>
                             <button class="btn-delete" onclick="deleteItem(${item.id})">🗑</button>
                         </div>
                     `;
@@ -259,24 +260,45 @@
             });
         }
 
-        // Удаление товара
+        // НОВАЯ ФУНКЦИЯ: Смена названия
+        async function editTitle(itemId) {
+            const item = currentItems.find(i => i.id === itemId);
+            if (!item) return;
+
+            // Вызываем стандартное окно ввода текста
+            const newTitle = window.prompt("Введите новое название для этого товара:", item.title);
+            
+            // Если пользователь нажал "ОК" и ввел не пустой текст
+            if (newTitle !== null && newTitle.trim() !== "") {
+                tg.HapticFeedback.impactOccurred('light');
+                
+                try {
+                    await fetch(`${RENDER_URL}/api/wishlist/${itemId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title: newTitle.trim() }) // Отправляем новое название на сервер
+                    });
+                    loadWishlist(); // Обновляем витрину
+                } catch (e) {
+                    tg.showAlert("Не удалось сохранить название. Попробуйте еще раз.");
+                }
+            }
+        }
+
         async function deleteItem(itemId) {
             if (!confirm("Точно удалить?")) return;
             tg.HapticFeedback.impactOccurred('medium');
-            
             try {
                 await fetch(`${RENDER_URL}/api/wishlist/${itemId}`, { method: 'DELETE' });
-                loadWishlist(); // Перезагружаем список
+                loadWishlist(); 
             } catch (e) {
                 alert("Ошибка при удалении");
             }
         }
 
-        // Отметить как подаренное
         async function togglePurchased(itemId, currentStatus) {
             tg.HapticFeedback.impactOccurred('light');
             const newStatus = currentStatus === 1 ? 0 : 1;
-            
             try {
                 await fetch(`${RENDER_URL}/api/wishlist/${itemId}`, {
                     method: 'PUT',
@@ -289,12 +311,10 @@
             }
         }
 
-        // Массовое обновление цен (для кнопки 🔄)
         async function updateAllPrices() {
             const btn = document.getElementById("updatePricesBtn");
             btn.innerHTML = "⏳ Обновляю...";
             btn.disabled = true;
-            
             tg.HapticFeedback.impactOccurred('rigid');
 
             try {
@@ -314,7 +334,6 @@
             }
         }
 
-        // Запускаем загрузку при открытии
         loadWishlist();
     </script>
 </body>
