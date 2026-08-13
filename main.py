@@ -17,10 +17,10 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # ==========================================
 # --- НАСТРОЙКИ (ОБЯЗАТЕЛЬНО ЗАПОЛНИТЕ!) ---
-BOT_TOKEN = "ВАШ_ТОКЕН_БОТА"
-BOT_USERNAME = "ИМЯ_ВАШЕГО_БОТА" # без @
+BOT_TOKEN = "8962380300:AAHjm3VlqgUT--ATCQcU6p0wPAreGOMsXNM"
+BOT_USERNAME = "hotelochkki_bot" # без @
 RENDER_URL = "https://hotelochkki.onrender.com" # Ваша ссылка на Render (без слэша на конце)
-WEB_APP_URL = "https://ваша-ссылка.netlify.app" # Ваша ссылка на Netlify
+WEB_APP_URL = "https://lilpe4enka.github.io/hotelochkki/"
 # ==========================================
 
 WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
