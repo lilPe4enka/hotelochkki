@@ -1,4 +1,4 @@
-import sqlite3
+import psycopg2
 import requests
 from bs4 import BeautifulSoup
 from fastapi import FastAPI, Request
@@ -60,9 +60,11 @@ init_db()
 # --- УПРАВЛЕНИЕ ЖИЗНЕННЫМ ЦИКЛОМ СЕРВЕРА ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # При запуске сервера говорим Телеграму, куда слать сообщения
     await bot.set_webhook(url=WEBHOOK_URL)
     print("✅ Webhook успешно установлен!")
     yield
+    # При выключении сервера удаляем Webhook
     await bot.delete_webhook()
     print("🛑 Webhook удален!")
 
@@ -114,7 +116,7 @@ async def handle_text(message: Message):
                 else:
                     await msg.edit_text("❌ Ошибка при сохранении.")
         except Exception:
-            await msg.edit_text("❌ Ошибка соединения.")
+            await msg.edit_text("❌ Ошибка соединения. Возможно, сервер Render еще загружается.")
 
 # ==========================================
 # 2. ЧАСТЬ FASTAPI (API И WEBHOOK)
