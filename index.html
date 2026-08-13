@@ -3,105 +3,115 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Мой Wishlist</title>
+    <title>Мой Wishlist 2.0</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background-color: var(--tg-theme-bg-color, #f4f4f5);
             color: var(--tg-theme-text-color, #000000);
-            margin: 0; padding: 16px; padding-bottom: 80px; /* Отступ для плавающей кнопки */
+            margin: 0; padding: 16px; padding-bottom: 80px;
         }
 
-        h2 { text-align: center; margin-top: 0; margin-bottom: 20px;}
+        h2 { text-align: center; margin-top: 0; margin-bottom: 16px;}
 
-        .add-form { display: flex; gap: 8px; margin-bottom: 24px; }
-        
-        .add-input {
-            flex: 1; padding: 12px; border-radius: 12px;
-            border: 1px solid var(--tg-theme-hint-color, #ccc);
-            background: var(--tg-theme-bg-color, #fff);
-            color: var(--tg-theme-text-color, #000);
-            outline: none;
+        /* Панель вкладок (Скроллится горизонтально) */
+        .tabs {
+            display: flex; overflow-x: auto; gap: 8px; margin-bottom: 20px;
+            padding-bottom: 8px; scrollbar-width: none;
         }
-        
-        .add-btn {
-            background-color: var(--tg-theme-button-color, #3390ec);
+        .tabs::-webkit-scrollbar { display: none; }
+        .tab {
+            padding: 8px 16px; border-radius: 20px; white-space: nowrap;
+            background: var(--tg-theme-secondary-bg-color, #e0e0e0);
+            color: var(--tg-theme-hint-color, #666);
+            font-weight: bold; font-size: 14px; cursor: pointer; border: none;
+        }
+        .tab.active {
+            background: var(--tg-theme-button-color, #3390ec);
             color: var(--tg-theme-button-text-color, #fff);
-            border: none; padding: 12px 20px; border-radius: 12px;
-            font-weight: bold; cursor: pointer;
         }
 
-        .grid {
-            display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+        /* Форма добавления */
+        .add-form { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+        .add-input {
+            flex: 1; min-width: 150px; padding: 12px; border-radius: 12px;
+            border: 1px solid var(--tg-theme-hint-color, #ccc);
+            background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000); outline: none;
         }
+        .cat-select {
+            padding: 12px; border-radius: 12px; border: 1px solid var(--tg-theme-hint-color, #ccc);
+            background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000);
+        }
+        .add-btn {
+            background-color: var(--tg-theme-button-color, #3390ec); color: var(--tg-theme-button-text-color, #fff);
+            border: none; padding: 12px 20px; border-radius: 12px; font-weight: bold; cursor: pointer;
+        }
+
+        /* Сетка товаров */
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 
         .card {
             background-color: var(--tg-theme-secondary-bg-color, #ffffff);
-            border-radius: 16px; overflow: hidden;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-            display: flex; flex-direction: column; position: relative;
+            border-radius: 16px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            display: flex; flex-direction: column; position: relative; transition: opacity 0.3s;
         }
+        .card.purchased { opacity: 0.6; filter: grayscale(50%); }
 
-        .card-img {
-            width: 100%; height: 160px; object-fit: cover; background-color: #eee;
-        }
+        .card-img { width: 100%; height: 150px; object-fit: cover; background-color: #eee; }
 
-        .card-body { padding: 12px; display: flex; flex-direction: column; flex: 1; }
+        .card-body { padding: 12px; display: flex; flex-direction: column; flex: 1; gap: 8px; }
         
         .card-title {
-            font-size: 14px; font-weight: 600; margin-bottom: 12px;
+            font-size: 14px; font-weight: 600;
             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
             overflow: hidden; text-overflow: ellipsis;
         }
+        .card.purchased .card-title { text-decoration: line-through; }
 
-        .buy-btn {
-            margin-top: auto; display: block; text-align: center;
-            background-color: var(--tg-theme-button-color, #3390ec);
-            color: var(--tg-theme-button-text-color, #fff);
-            text-decoration: none; padding: 8px; border-radius: 10px;
-            font-size: 13px; font-weight: bold;
-        }
-
-        /* Кнопки действий (редактировать, удалить) */
-        .card-actions {
-            position: absolute; top: 8px; right: 8px;
-            display: flex; gap: 6px; z-index: 10;
-        }
-
+        .card-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 6px; z-index: 10; }
+        
         .action-btn {
-            background: rgba(255, 255, 255, 0.9); border: none;
-            width: 30px; height: 30px; border-radius: 15px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 14px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
-
-        /* Чекбокс для выбора товара */
-        .checkbox-container {
-            position: absolute; top: 12px; left: 12px; z-index: 10;
+            background: rgba(255, 255, 255, 0.9); border: none; width: 30px; height: 30px; border-radius: 15px;
+            display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
         
-        .item-checkbox {
-            width: 22px; height: 22px; cursor: pointer;
-            accent-color: var(--tg-theme-button-color, #3390ec);
+        /* Кнопка приоритета (огонек) */
+        .priority-btn {
+            position: absolute; top: 8px; left: 8px; z-index: 10;
+            background: rgba(255, 255, 255, 0.9); border: none; width: 32px; height: 32px; border-radius: 16px;
+            font-size: 16px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); filter: grayscale(100%);
+        }
+        .priority-btn.active { filter: grayscale(0%); background: #fff0d4; border: 1px solid #ff9800; }
+
+        /* Чекбокс для шаринга */
+        .checkbox-container { position: absolute; top: 48px; left: 12px; z-index: 10; }
+        .item-checkbox { width: 20px; height: 20px; accent-color: var(--tg-theme-button-color, #3390ec); }
+
+        .buy-btn, .bought-btn {
+            text-align: center; border: none; color: #fff; text-decoration: none;
+            padding: 8px; border-radius: 10px; font-size: 13px; font-weight: bold; cursor: pointer;
+        }
+        .buy-btn { background-color: var(--tg-theme-button-color, #3390ec); flex: 1; }
+        .bought-btn { background-color: #4CAF50; }
+        .buttons-row { display: flex; gap: 6px; margin-top: auto; }
+
+        .mini-select {
+            width: 100%; padding: 4px; border-radius: 6px; border: 1px solid #ddd;
+            font-size: 11px; background: transparent; color: var(--tg-theme-hint-color);
         }
 
-        /* Плавающая кнопка "Поделиться" */
+        /* Плавающая кнопка поделиться */
         .share-bar {
             position: fixed; bottom: 16px; left: 16px; right: 16px;
             display: flex; justify-content: center; z-index: 100;
             transition: transform 0.3s ease, opacity 0.3s ease;
         }
-        
-        .share-bar.hidden {
-            transform: translateY(100px); opacity: 0; pointer-events: none;
-        }
-
+        .share-bar.hidden { transform: translateY(100px); opacity: 0; pointer-events: none; }
         .share-btn {
-            background-color: var(--tg-theme-button-color, #3390ec);
-            color: var(--tg-theme-button-text-color, #fff);
-            padding: 16px; border-radius: 14px; border: none;
-            font-weight: bold; font-size: 16px; width: 100%;
+            background-color: var(--tg-theme-button-color, #3390ec); color: #fff;
+            padding: 16px; border-radius: 14px; border: none; font-weight: bold; font-size: 16px; width: 100%;
             box-shadow: 0 4px 15px rgba(51, 144, 236, 0.4); cursor: pointer;
         }
 
@@ -113,15 +123,31 @@
 
     <h2>Мои Желания 🎁</h2>
 
-    <div class="add-form">
-        <input type="text" id="link-input" class="add-input" placeholder="Вставьте ссылку на товар...">
+    <!-- Вкладки категорий -->
+    <div class="tabs" id="category-tabs">
+        <button class="tab active" onclick="setCategory('Все')">Все</button>
+        <button class="tab" onclick="setCategory('Одежда')">Одежда</button>
+        <button class="tab" onclick="setCategory('Техника')">Техника</button>
+        <button class="tab" onclick="setCategory('Для дома')">Для дома</button>
+        <button class="tab" onclick="setCategory('Подарки')">Подарки</button>
+        <button class="tab" onclick="setCategory('Куплено')">Куплено ✅</button>
+    </div>
+
+    <div class="add-form" id="add-form-container">
+        <input type="text" id="link-input" class="add-input" placeholder="Вставьте ссылку...">
+        <select id="new-cat-select" class="cat-select">
+            <option value="Одежда">Одежда</option>
+            <option value="Техника">Техника</option>
+            <option value="Для дома">Для дома</option>
+            <option value="Подарки">Подарки</option>
+            <option value="Остальное" selected>Остальное</option>
+        </select>
         <button class="add-btn" onclick="addNewItem()">➕</button>
     </div>
 
-    <div id="loading">Загружаем ваши хотелки... ⏳</div>
+    <div id="loading">Загружаем хотелки... ⏳</div>
     <div id="wishlist-grid" class="grid hidden-element"></div>
 
-    <!-- Всплывающая панель "Поделиться" -->
     <div id="share-bar" class="share-bar hidden">
         <button class="share-btn" onclick="shareSelected()">Поделиться выбранным (0)</button>
     </div>
@@ -130,29 +156,56 @@
         const tg = window.Telegram.WebApp;
         tg.ready(); tg.expand(); tg.setHeaderColor('bg_color');
 
-        // Ваша ссылка на Render
+        // ВАЖНО: Ваша ссылка на Render
         const API_URL = "https://hotelochkki.onrender.com"; 
         const userId = tg.initDataUnsafe?.user?.id || 123456789;
+        
+        let allItems = [];
+        let currentCategory = 'Все';
 
         async function fetchWishlist() {
             try {
                 const response = await fetch(`${API_URL}/api/wishlist/${userId}`);
-                const items = await response.json();
-                renderItems(items);
-                updateShareButton(); // Сбрасываем кнопку при обновлении
+                allItems = await response.json();
+                renderItems();
+                updateShareButton();
             } catch (error) {
                 document.getElementById('loading').innerText = "Ошибка загрузки 😔";
             }
         }
 
-        function renderItems(items) {
+        function setCategory(cat) {
+            currentCategory = cat;
+            document.querySelectorAll('.tab').forEach(btn => {
+                btn.classList.toggle('active', btn.innerText.includes(cat) || btn.innerText === cat);
+            });
+            
+            // Скрываем форму добавления во вкладке "Куплено"
+            const addForm = document.getElementById('add-form-container');
+            if (cat === 'Куплено') addForm.classList.add('hidden-element');
+            else addForm.classList.remove('hidden-element');
+
+            renderItems();
+        }
+
+        function renderItems() {
             const grid = document.getElementById('wishlist-grid');
             const loading = document.getElementById('loading');
-            
             grid.innerHTML = '';
-            
-            if (items.length === 0) {
-                loading.innerText = "Ваш список пока пуст 🛍\nОтправьте ссылку боту или добавьте её выше.";
+
+            // Фильтруем товары
+            let filtered = allItems;
+            if (currentCategory === 'Куплено') {
+                filtered = allItems.filter(item => item.is_purchased === 1);
+            } else {
+                filtered = allItems.filter(item => item.is_purchased === 0);
+                if (currentCategory !== 'Все') {
+                    filtered = filtered.filter(item => item.category === currentCategory);
+                }
+            }
+
+            if (filtered.length === 0) {
+                loading.innerText = currentCategory === 'Куплено' ? "Здесь будут ваши сбывшиеся мечты ✨" : "В этой категории пока пусто 🛍";
                 loading.classList.remove('hidden-element');
                 grid.classList.add('hidden-element');
                 return;
@@ -161,90 +214,96 @@
             loading.classList.add('hidden-element');
             grid.classList.remove('hidden-element');
 
-            items.forEach(item => {
+            // Сортировка: приоритетные сверху
+            filtered.sort((a, b) => b.is_priority - a.is_priority);
+
+            filtered.forEach(item => {
                 const card = document.createElement('div');
-                card.className = 'card';
-                const safeTitle = item.title.replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+                card.className = `card ${item.is_purchased ? 'purchased' : ''}`;
+                const safeTitle = (item.title || "").replace(/'/g, "&apos;").replace(/"/g, "&quot;");
                 
+                // Категории для дропдауна
+                const categories = ['Одежда', 'Техника', 'Для дома', 'Подарки', 'Остальное'];
+                let catOptions = categories.map(c => `<option value="${c}" ${item.category === c ? 'selected' : ''}>${c}</option>`).join('');
+
                 card.innerHTML = `
-                    <div class="checkbox-container">
-                        <input type="checkbox" class="item-checkbox" data-url="${item.url}" onchange="updateShareButton()">
-                    </div>
+                    ${item.is_purchased ? '' : `
+                        <button class="priority-btn ${item.is_priority ? 'active' : ''}" onclick="togglePriority(${item.id}, ${item.is_priority})">🔥</button>
+                        <div class="checkbox-container"><input type="checkbox" class="item-checkbox" data-url="${item.url}" onchange="updateShareButton()"></div>
+                    `}
                     <div class="card-actions">
                         <button class="action-btn" onclick="editItem(${item.id}, '${safeTitle}')">✏️</button>
                         <button class="action-btn" style="color: red;" onclick="deleteItem(${item.id})">🗑</button>
                     </div>
-                    <img src="${item.image_url}" alt="Фото" class="card-img" onerror="this.src='https://via.placeholder.com/300x300?text=Нет+фото'">
+                    <img src="${item.image_url}" class="card-img" onerror="this.src='https://via.placeholder.com/300x300?text=Нет+фото'">
                     <div class="card-body">
                         <div class="card-title">${item.title}</div>
-                        <a href="${item.url}" target="_blank" class="buy-btn">Перейти</a>
+                        ${item.is_purchased ? '' : `<select class="mini-select" onchange="changeCategory(${item.id}, this.value)">${catOptions}</select>`}
+                        <div class="buttons-row">
+                            <a href="${item.url}" target="_blank" class="buy-btn">Ссылка</a>
+                            <button class="bought-btn" onclick="togglePurchased(${item.id}, ${item.is_purchased})">
+                                ${item.is_purchased ? 'Вернуть' : 'Куплено ✅'}
+                            </button>
+                        </div>
                     </div>
                 `;
                 grid.appendChild(card);
             });
         }
 
-        // Обновление состояния кнопки "Поделиться"
+        async function updateField(itemId, fieldName, value) {
+            tg.HapticFeedback.selectionChanged();
+            try {
+                const body = {}; body[fieldName] = value;
+                await fetch(`${API_URL}/api/wishlist/${itemId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                fetchWishlist();
+            } catch (error) {}
+        }
+
+        function togglePriority(id, current) { updateField(id, 'is_priority', current ? 0 : 1); }
+        function togglePurchased(id, current) { 
+            if(!current) tg.HapticFeedback.notificationOccurred('success');
+            updateField(id, 'is_purchased', current ? 0 : 1); 
+        }
+        function changeCategory(id, newCat) { updateField(id, 'category', newCat); }
+
         function updateShareButton() {
             const checkboxes = document.querySelectorAll('.item-checkbox:checked');
             const shareBar = document.getElementById('share-bar');
             const shareBtn = shareBar.querySelector('.share-btn');
-
             if (checkboxes.length > 0) {
-                shareBtn.innerText = `Поделиться выбранным (${checkboxes.length})`;
+                shareBtn.innerText = `Поделиться (${checkboxes.length})`;
                 shareBar.classList.remove('hidden');
             } else {
                 shareBar.classList.add('hidden');
             }
         }
 
-        // ЖЕЛЕЗОБЕТОННАЯ ФУНКЦИЯ ОТПРАВКИ
         function shareSelected() {
             const checkboxes = document.querySelectorAll('.item-checkbox:checked');
             if (checkboxes.length === 0) return;
-
-            // Формируем текст сообщения только со ссылками
-            let text = "Привет! Посмотри, что я хочу 🎁:\n\n";
-            checkboxes.forEach((cb, index) => {
-                text += `${index + 1}. ${cb.dataset.url}\n`;
-            });
-
-            // Формируем ссылку для шаринга
+            let text = "Смотри, что я хочу 🎁:\n\n";
+            checkboxes.forEach((cb, i) => { text += `${i + 1}. ${cb.dataset.url}\n`; });
             const shareUrl = `https://t.me/share/url?text=${encodeURIComponent(text)}`;
-
-            try {
-                // Открываем окно выбора чата в Telegram
-                tg.openTelegramLink(shareUrl);
-            } catch (e) {
-                // Если не сработало, используем классический переход браузера
-                window.location.href = shareUrl;
-            }
+            try { tg.openTelegramLink(shareUrl); } catch (e) { window.location.href = shareUrl; }
         }
 
         async function editItem(itemId, currentTitle) {
-            const newTitle = prompt("Введите новое название товара:", currentTitle);
-            if (newTitle === null || newTitle.trim() === "" || newTitle === currentTitle) return;
-
-            tg.MainButton.text = "Обновляем..."; tg.MainButton.show();
-            try {
-                const response = await fetch(`${API_URL}/api/wishlist/${itemId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title: newTitle.trim() })
-                });
-                if (response.ok) {
-                    tg.HapticFeedback.notificationOccurred('success');
-                    fetchWishlist();
-                }
-            } catch (error) {} finally { tg.MainButton.hide(); }
+            const newTitle = prompt("Новое название:", currentTitle);
+            if (newTitle && newTitle.trim() !== "" && newTitle !== currentTitle) {
+                updateField(itemId, 'title', newTitle.trim());
+            }
         }
 
         async function addNewItem() {
-            const input = document.getElementById('link-input');
-            const url = input.value.trim();
+            const url = document.getElementById('link-input').value.trim();
+            const cat = document.getElementById('new-cat-select').value;
             if (!url) return tg.showAlert("Сначала вставьте ссылку!");
-            if (!url.startsWith('http')) return tg.showAlert("Ссылка должна начинаться с http или https");
-
+            
             tg.MainButton.text = "Сохраняем..."; tg.MainButton.showProgress(); tg.MainButton.show();
             try {
                 const response = await fetch(`${API_URL}/api/wishlist`, {
@@ -253,23 +312,27 @@
                     body: JSON.stringify({ user_id: userId, url: url })
                 });
                 if (response.ok) {
-                    input.value = '';
+                    const data = await response.json();
+                    // Сразу обновляем категорию добавленного товара
+                    await fetch(`${API_URL}/api/wishlist/${data.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ category: cat })
+                    });
+                    
+                    document.getElementById('link-input').value = '';
                     tg.HapticFeedback.notificationOccurred('success');
                     fetchWishlist();
-                } else { tg.showAlert("Ошибка при сохранении"); }
+                }
             } catch (error) {} finally { tg.MainButton.hide(); }
         }
 
         async function deleteItem(itemId) {
-            tg.showConfirm("Точно удалить этот товар?", async (confirmed) => {
+            tg.showConfirm("Удалить товар?", async (confirmed) => {
                 if (confirmed) {
-                    try {
-                        const response = await fetch(`${API_URL}/api/wishlist/${itemId}`, { method: 'DELETE' });
-                        if (response.ok) {
-                            tg.HapticFeedback.impactOccurred('light');
-                            fetchWishlist();
-                        }
-                    } catch (error) {}
+                    await fetch(`${API_URL}/api/wishlist/${itemId}`, { method: 'DELETE' });
+                    tg.HapticFeedback.impactOccurred('light');
+                    fetchWishlist();
                 }
             });
         }
