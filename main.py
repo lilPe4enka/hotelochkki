@@ -21,7 +21,8 @@ BOT_TOKEN = "8962380300:AAHjm3VlqgUT--ATCQcU6p0wPAreGOMsXNM"
 BOT_USERNAME = "hotelochkki_bot" # без @
 RENDER_URL = "https://hotelochkki.onrender.com" # Ваша ссылка на Render (без слэша на конце)
 WEB_APP_URL = "https://lilpe4enka.github.io/hotelochkki/"
-DATABASE_URL = "postgresql://postgres:3LT-f2C-JSK-PPe@db.cxxtkkkagyuemunlabgx.supabase.co:5432/postgres"
+DATABASE_URL = "postgresql://postgres.cxxtkkkagyuemunlabgx:3LT-f2C-JSK-PPe@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"
+
 # ==========================================
 
 WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
