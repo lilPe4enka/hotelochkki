@@ -32,11 +32,9 @@ CRON_SECRET = "super_secret_night_update_777"
 WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
 WEBHOOK_URL = f"{RENDER_URL}{WEBHOOK_PATH}"
 
-# --- ИНИЦИАЛИЗАЦИЯ БОТА ---
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# --- ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ (PostgreSQL) ---
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
 
@@ -61,21 +59,20 @@ def init_db():
 
 init_db()
 
-# --- УПРАВЛЕНИЕ ЖИЗНЕННЫМ ЦИКЛОМ СЕРВЕРА ---
+# --- УПРАВЛЕНИЕ ЖИЗНЕННЫМ ЦИКЛОМ ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await bot.set_webhook(url=WEBHOOK_URL)
     print("✅ Webhook успешно установлен!")
     yield
-    await bot.delete_webhook()
-    print("🛑 Webhook удален!")
+    # ВАЖНО: Удаление вебхука убрано, чтобы Телеграм мог будить спящий сервер Render!
+    print("🛑 Сервер уходит в сон, Webhook остается активным.")
 
-# --- ИНИЦИАЛИЗАЦИЯ FASTAPI ---
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 # ==========================================
-# 1. ЧАСТЬ ДЛЯ ТЕЛЕГРАМ БОТА (ОБРАБОТЧИКИ)
+# 1. ЧАСТЬ ДЛЯ ТЕЛЕГРАМ БОТА
 # ==========================================
 
 @dp.message(CommandStart())
@@ -107,70 +104,75 @@ async def handle_text(message: Message):
         await message.answer("Я не нашел ссылку в твоем сообщении 🔗")
         return
         
-    msg = await message.answer("⏳ Анализирую ссылку и сохраняю товар...")
+    msg = await message.answer("⏳ Анализирую ссылку и сохраняю товар (может занять до 10 секунд)...")
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(f"{RENDER_URL}/api/wishlist", json={"user_id": message.from_user.id, "url": urls[0]}) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     safe_title = data.get("title", "Товар").replace('<', '').replace('>', '')
-                    await msg.edit_text(f"✅ <b>Успешно сохранено!</b>\n\n📦 {safe_title}", parse_mode="HTML")
+                    
+                    # НОВОЕ: ВЫВОДИМ ЦЕНУ ПРЯМО В ТЕЛЕГРАМ!
+                    price_val = data.get("price")
+                    if price_val and price_val != "Цена не найдена":
+                        price_str = f"\n💰 Цена: <b>{price_val}</b>"
+                    else:
+                        price_str = f"\n💰 <i>Цена не найдена (проверьте API-ключ или маркетплейс сменил защиту)</i>"
+                        
+                    await msg.edit_text(f"✅ <b>Успешно сохранено!</b>\n\n📦 {safe_title}{price_str}", parse_mode="HTML")
                 else:
                     await msg.edit_text("❌ Ошибка при сохранении.")
-        except Exception:
-            await msg.edit_text("❌ Ошибка соединения. Возможно, сервер Render еще загружается.")
+        except Exception as e:
+            await msg.edit_text(f"❌ Ошибка соединения: {e}")
+
 
 # ==========================================
-# 2. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ПАРСИНГ)
+# 2. ПАРСЕР (ИЗВЛЕЧЕНИЕ ЦЕН И КАРТИНОК)
 # ==========================================
 
 def extract_number(price_str: str) -> int:
-    """Вытаскивает только цифры из строки '1 250 ₽' -> 1250"""
     if not price_str: return 0
     numbers = re.findall(r'\d+', price_str)
     return int(''.join(numbers)) if numbers else 0
 
 def parse_link(url: str):
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0"}
     title = "Новый товар"
     image_url = "https://via.placeholder.com/300x300?text=Нет+фото"
-    price = None
+    # По умолчанию ставим эту фразу, чтобы в базе не сохранялась пустота
+    price = "Цена не найдена" 
 
-    HEAVY_SITES = ["ozon.ru", "market.yandex.ru", "dns-shop.ru", "aliexpress.ru"]
+    HEAVY_SITES = ["ozon", "market.yandex", "dns-shop", "aliexpress"]
 
     try:
-        # --- 1. ЛОГИКА ДЛЯ СЛОЖНЫХ МАРКЕТПЛЕЙСОВ (ЧЕРЕЗ ZENROWS) ---
+        # --- 1. ЛОГИКА ДЛЯ OZON, ЯНДЕКС, DNS (ЧЕРЕЗ ZENROWS) ---
         if any(site in url for site in HEAVY_SITES):
+            if not ZENROWS_API_KEY or ZENROWS_API_KEY == "ВАШ_КЛЮЧ_ZENROWS_СЮДА":
+                return {"title": title, "image_url": image_url, "price": "Нужен ключ ZenRows"}
+                
             params = {"apikey": ZENROWS_API_KEY, "url": url, "js_render": "true", "premium_proxy": "true"}
             resp = requests.get("https://api.zenrows.com/v1/", params=params, timeout=30)
             
             if resp.status_code == 200:
                 soup = BeautifulSoup(resp.text, 'html.parser')
-                
                 og_title = soup.find('meta', property='og:title')
                 if og_title: title = og_title.get('content')
                 og_img = soup.find('meta', property='og:image')
                 if og_img: image_url = og_img.get('content')
                 
-                # Проверка наличия
                 page_text = soup.text.lower()
-                out_of_stock_phrases = ["нет в наличии", "этот товар закончился", "раскупили", "out of stock", "товар распродан"]
-                
-                if any(phrase in page_text for phrase in out_of_stock_phrases):
+                if any(p in page_text for p in ["нет в наличии", "этот товар закончился", "раскупили", "out of stock"]):
                     price = "Нет в наличии"
                 else:
-                    # Ищем цену перед знаком ₽ или руб.
                     clean_text = soup.text.replace('\xa0', ' ').replace('\u2009', ' ')
                     price_match = re.search(r'([0-9\s]+)(?:₽|руб\.?)', clean_text, re.IGNORECASE)
-                    
                     if price_match:
                         price = price_match.group(0).strip()
                         
-            return {"title": title[:62] + "..." if len(title)>65 else title, "image_url": image_url, "price": price}
-
-        # --- 2. ЛОГИКА ДЛЯ WILDBERRIES (Скрытый API) ---
-        elif "wildberries.ru" in url:
-            match = re.search(r'catalog/(\d+)/detail', url)
+        # --- 2. ЛОГИКА ДЛЯ WILDBERRIES ---
+        elif "wildberries.ru" in url or "wb.ru" in url:
+            # Ищем любые 5 и более цифр подряд в ссылке (артикул)
+            match = re.search(r'(\d{5,})', url)
             if match:
                 sku = match.group(1)
                 api_url = f"https://card.wb.ru/cards/v1/detail?appType=1&curr=rub&dest=-1257786&spp=30&nm={sku}"
@@ -184,45 +186,41 @@ def parse_link(url: str):
                         product = data['data']['products'][0]
                         title = product.get('name', title)
                         price_raw = product.get('salePriceU', 0) // 100
-                        if price_raw > 0: 
-                            price = f"{price_raw} ₽"
-                        else:
-                            price = "Нет в наличии"
+                        price = f"{price_raw} ₽" if price_raw > 0 else "Нет в наличии"
                 
                 html_resp = requests.get(url, headers=headers, timeout=5)
                 soup = BeautifulSoup(html_resp.text, 'html.parser')
                 og_img = soup.find('meta', property='og:image')
-                if og_img and og_img.get('content'): image_url = og_img.get('content')
-                
-                return {"title": title[:62] + "..." if len(title)>65 else title, "image_url": image_url, "price": price}
+                if og_img and og_img.get('content'): 
+                    image_url = og_img.get('content')
 
-        # --- 3. СТАНДАРТНАЯ ЛОГИКА ДЛЯ ОСТАЛЬНЫХ САЙТОВ ---
-        resp = requests.get(url, headers=headers, timeout=5)
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            
-            og_title = soup.find('meta', property='og:title')
-            title = og_title.get('content') if (og_title and og_title.get('content')) else (soup.title.string if soup.title else title)
-            
-            og_img = soup.find('meta', property='og:image')
-            image_url = og_img.get('content') if (og_img and og_img.get('content')) else image_url
-            
-            page_text = soup.text.lower()
-            if "нет в наличии" in page_text or "out of stock" in page_text:
-                price = "Нет в наличии"
-            else:
-                clean_text = soup.text.replace('\xa0', ' ').replace('\u2009', ' ')
-                price_match = re.search(r'([0-9\s]+)(?:₽|руб\.?)', clean_text, re.IGNORECASE)
-                if price_match:
-                    price = price_match.group(0).strip()
-            
+        # --- 3. СТАНДАРТНЫЕ МАГАЗИНЫ ---
+        else:
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                og_title = soup.find('meta', property='og:title')
+                title = og_title.get('content') if (og_title and og_title.get('content')) else (soup.title.string if soup.title else title)
+                og_img = soup.find('meta', property='og:image')
+                image_url = og_img.get('content') if (og_img and og_img.get('content')) else image_url
+                
+                page_text = soup.text.lower()
+                if "нет в наличии" in page_text or "out of stock" in page_text:
+                    price = "Нет в наличии"
+                else:
+                    clean_text = soup.text.replace('\xa0', ' ').replace('\u2009', ' ')
+                    price_match = re.search(r'([0-9\s]+)(?:₽|руб\.?)', clean_text, re.IGNORECASE)
+                    if price_match:
+                        price = price_match.group(0).strip()
+                        
     except Exception as e:
         print(f"Ошибка парсинга: {e}")
         
     return {"title": title[:62] + "..." if len(title)>65 else title, "image_url": image_url, "price": price}
 
+
 # ==========================================
-# 3. ЧАСТЬ FASTAPI (API, WEBHOOK И CRON)
+# 3. ЧАСТЬ FASTAPI (МАРШРУТЫ БАЗЫ ДАННЫХ)
 # ==========================================
 
 @app.post(WEBHOOK_PATH)
@@ -232,12 +230,26 @@ async def bot_webhook(request: Request):
     await dp.feed_update(bot, update)
     return {"status": "ok"}
 
-class AddItemRequest(BaseModel): user_id: int; url: str
-class UpdateItemRequest(BaseModel): title: Optional[str] = None; category: Optional[str] = None; is_purchased: Optional[int] = None; is_priority: Optional[int] = None
-class ItemResponse(BaseModel): id: int; user_id: int; url: str; title: Optional[str] = None; image_url: Optional[str] = None; price: Optional[str] = None; category: Optional[str] = "Остальное"; is_purchased: Optional[int] = 0; is_priority: Optional[int] = 0
+class AddItemRequest(BaseModel): 
+    user_id: int
+    url: str
 
-@app.get("/")
-def read_root(): return {"status": "ok", "message": "Wishlist API is running!"}
+class UpdateItemRequest(BaseModel): 
+    title: Optional[str] = None
+    category: Optional[str] = None
+    is_purchased: Optional[int] = None
+    is_priority: Optional[int] = None
+
+class ItemResponse(BaseModel): 
+    id: int
+    user_id: int
+    url: str
+    title: Optional[str] = None
+    image_url: Optional[str] = None
+    price: Optional[str] = None
+    category: Optional[str] = "Остальное"
+    is_purchased: Optional[int] = 0
+    is_priority: Optional[int] = 0
 
 @app.get("/api/wishlist/{user_id}", response_model=List[ItemResponse])
 def get_wishlist(user_id: int):
@@ -298,6 +310,7 @@ def update_prices_manual(user_id: int):
     for item_id, url in items:
         parsed_data = parse_link(url)
         new_price = parsed_data.get("price")
+        # Теперь скрипт запишет результат, даже если это текст "Цена не найдена"
         if new_price:
             cursor.execute("UPDATE items SET price = %s WHERE id = %s", (new_price, item_id))
             updated_count += 1
@@ -323,7 +336,7 @@ async def cron_update_all_prices(token: str):
         parsed_data = parse_link(url)
         new_price_str = parsed_data.get("price")
         
-        if new_price_str:
+        if new_price_str and new_price_str != "Цена не найдена":
             cursor.execute("UPDATE items SET price = %s WHERE id = %s", (new_price_str, item_id))
             updated_count += 1
             
@@ -341,7 +354,7 @@ async def cron_update_all_prices(token: str):
                 user_notifications[user_id].append(msg)
                 
             # Скидка >= 5%
-            elif old_price_str and old_price_str != "Нет в наличии" and new_price_str != "Нет в наличии":
+            elif old_price_str and old_price_str not in ["Нет в наличии", "Цена не найдена"]:
                 old_price = extract_number(old_price_str)
                 new_price = extract_number(new_price_str)
                 
